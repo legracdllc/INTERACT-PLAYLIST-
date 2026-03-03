@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #0f172a;
+  --subtle: #64748b;
+  --brand: #0ea5e9;
+  --brand-strong: #0369a1;
+  --ok: #16a34a;
+  --warn: #f97316;
+}
+
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background:
+    radial-gradient(circle at 10% 20%, rgb(14 165 233 / 0.12), transparent 30%),
+    radial-gradient(circle at 90% 0%, rgb(22 163 74 / 0.09), transparent 20%),
+    var(--bg);
+  color: var(--ink);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid rgb(148 163 184 / 0.2);
+  border-radius: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  padding: 0.65rem 1rem;
+  font-weight: 700;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--brand-strong);
+}
