@@ -6,7 +6,11 @@ import { StudentDailyClient } from "@/components/student-daily-client";
 type DailyRow = {
   id: string;
   title: string | null;
-  notes: string | null;
+  instructions: string | null;
+  student_objective: string | null;
+  teks: string | null;
+  m_tools: string[] | null;
+  materials: string[] | null;
   date: string;
   published: boolean;
 };
@@ -27,7 +31,7 @@ export default async function StudentTodayPage() {
 
   const { data: daily } = await supabase
     .from("daily_playlists")
-    .select("id,title,notes,date,published")
+    .select("id,title,instructions,student_objective,teks,m_tools,materials,date,published")
     .eq("class_id", classId)
     .eq("date", today)
     .eq("published", true)
@@ -51,11 +55,20 @@ export default async function StudentTodayPage() {
 
   return (
     <main className="space-y-4">
-      <section className="panel p-5">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Today&apos;s Mission</p>
-        <h2 className="font-display text-3xl font-extrabold">{daily.title || "Daily Playlist"}</h2>
-        {daily.notes ? <p className="mt-2 text-slate-600">{daily.notes}</p> : null}
-        <Link href={`/student/daily/${daily.id}`} className="mt-4 inline-block text-sm font-bold text-sky-700 underline">Open Full Page</Link>
+      <section className="panel game-shell spark p-5 md:p-6">
+        <div className="relative z-10 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">Today&apos;s Mission</p>
+            <h2 className="font-display text-3xl font-extrabold text-white md:text-4xl">{daily.title || "Daily Playlist"}</h2>
+            <p className="mt-1 text-sm text-indigo-100/85">Pilot: {profile.full_name}</p>
+            {daily.teks ? <p className="mt-2 text-sm text-cyan-100">TEKS: {daily.teks}</p> : null}
+            {daily.student_objective ? <p className="mt-1 text-sm text-amber-100">Objective: {daily.student_objective}</p> : null}
+            {daily.instructions ? <p className="mt-1 max-w-3xl text-indigo-100/95">{daily.instructions}</p> : null}
+            {daily.m_tools?.length ? <p className="mt-1 max-w-3xl text-sm text-lime-100">M-Tools: {daily.m_tools.join(", ")}</p> : null}
+            {daily.materials?.length ? <p className="mt-1 max-w-3xl text-sm text-pink-100">Materials: {daily.materials.join(", ")}</p> : null}
+          </div>
+          <Link href={`/student/daily/${daily.id}`} className="btn border border-white/20 bg-white/10 text-white">Open Full Board</Link>
+        </div>
       </section>
       <StudentDailyClient dailyId={daily.id} items={items ?? []} progressRows={progress ?? []} />
     </main>

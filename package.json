@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
+    "dev:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next dev --webpack",
     "build": "next build",
+    "build:prod": "next build",
     "start": "next start",
+    "start:prod": "next start -p 3000",
+    "prod": "npm run build:prod && npm run start:prod",
     "lint": "eslint"
   },
   "dependencies": {

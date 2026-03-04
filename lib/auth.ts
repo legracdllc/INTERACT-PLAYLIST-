@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile, Role } from "@/lib/types";
 
-export async function getUserAndProfile(requiredRole?: Role) {
+const getSessionProfile = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,6 +22,12 @@ export async function getUserAndProfile(requiredRole?: Role) {
   if (!profile) {
     redirect("/login?error=missing_profile");
   }
+
+  return { supabase, user, profile };
+});
+
+export async function getUserAndProfile(requiredRole?: Role) {
+  const { supabase, user, profile } = await getSessionProfile();
 
   if (requiredRole && profile.role !== requiredRole) {
     redirect(profile.role === "teacher" ? "/teacher/dashboard" : "/student/today");

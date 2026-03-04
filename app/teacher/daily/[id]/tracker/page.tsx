@@ -33,31 +33,36 @@ export default async function TeacherTrackerPage({ params }: { params: Promise<{
   const { id } = await params;
   const { supabase } = await getUserAndProfile("teacher");
 
-  const { data: daily } = await supabase
-    .from("daily_playlists")
-    .select("id,title,date,class_id,classes(name)")
-    .eq("id", id)
-    .single<DailyHeader>();
+  const [dailyResult, itemsResult, progressResult] = await Promise.all([
+    supabase
+      .from("daily_playlists")
+      .select("id,title,date,class_id,classes(name)")
+      .eq("id", id)
+      .single<DailyHeader>(),
+    supabase
+      .from("daily_playlist_items")
+      .select("id,order_index,skill_name,teks,max_score")
+      .eq("daily_playlist_id", id)
+      .order("order_index", { ascending: true }),
+    supabase
+      .from("daily_progress")
+      .select("id,student_id,daily_playlist_item_id,status,score,teacher_note")
+      .eq("daily_playlist_id", id),
+  ]);
+
+  const daily = dailyResult.data;
 
   if (!daily) {
     return <p className="panel p-5">Daily playlist not found.</p>;
   }
-
-  const { data: items } = await supabase
-    .from("daily_playlist_items")
-    .select("id,order_index,skill_name,teks,max_score")
-    .eq("daily_playlist_id", id)
-    .order("order_index", { ascending: true });
 
   const { data: roster } = await supabase
     .from("class_students")
     .select("student_id,profiles!inner(id,full_name)")
     .eq("class_id", daily.class_id);
 
-  const { data: progressRows } = await supabase
-    .from("daily_progress")
-    .select("id,student_id,daily_playlist_item_id,status,score,teacher_note")
-    .eq("daily_playlist_id", id);
+  const items = itemsResult.data ?? [];
+  const progressRows = progressResult.data ?? [];
 
   const byCell = new Map<string, ProgressRow>();
   for (const row of progressRows ?? []) {

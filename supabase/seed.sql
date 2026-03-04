@@ -27,19 +27,23 @@ on conflict (id) do update set
   name = excluded.name;
 
 -- 4) Create one daily playlist (date can be adjusted)
-insert into public.daily_playlists (id, class_id, date, title, notes, created_by, published)
+insert into public.daily_playlists (id, class_id, date, title, instructions, student_objective, teks, created_by, published)
 values (
   '33333333-3333-3333-3333-333333333333',
   '22222222-2222-2222-2222-222222222222',
   current_date,
   'Math Playlist Demo Day',
-  'Use placeholder links/resources for testing.',
+  'Complete all playlist items in order and submit your work for grading.',
+  'I can solve multi-step math problems using the strategy for each level.',
+  '4.4A, 4.5B',
   'TEACHER_AUTH_USER_UUID',
   true
 )
 on conflict (id) do update set
   title = excluded.title,
-  notes = excluded.notes,
+  instructions = excluded.instructions,
+  student_objective = excluded.student_objective,
+  teks = excluded.teks,
   published = excluded.published;
 
 -- 5) Add 6 sample items

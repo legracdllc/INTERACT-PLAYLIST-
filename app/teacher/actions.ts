@@ -6,8 +6,23 @@ import { z } from "zod";
 import { getUserAndProfile } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 
-const STUDENT_ID_REGEX = /^[A-Z][0-9]{6}$/;
+const STUDENT_ID_REGEX = /^[A-Z][0-9]{7}$/;
 const PIN_REGEX = /^[0-9]{6}$/;
+
+const M_TOOL_OPTIONS = [
+  "PVC (Place Value Chart)",
+  "120 Chart",
+  "AM (Area Model)",
+  "UPSC (Understand, Plan, Solve, Check)",
+  "PSF Chart (Problem Solve Flow Chart)",
+] as const;
+
+const MATERIAL_OPTIONS = [
+  "Strategy sheet",
+  "Dry eraser markers",
+  "Pencil",
+  "Laptop",
+] as const;
 
 export async function createClassAction(formData: FormData) {
   const { supabase, profile } = await getUserAndProfile("teacher");
@@ -61,13 +76,30 @@ export async function updateDailyMetaAction(formData: FormData) {
   const { supabase } = await getUserAndProfile("teacher");
   const dailyId = String(formData.get("dailyId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
+  const instructions = String(formData.get("instructions") ?? "").trim();
+  const studentObjective = String(formData.get("studentObjective") ?? "").trim();
+  const teks = String(formData.get("teks") ?? "").trim();
+  const mTools = formData
+    .getAll("mTools")
+    .map((value) => String(value))
+    .filter((value): value is (typeof M_TOOL_OPTIONS)[number] => M_TOOL_OPTIONS.includes(value as (typeof M_TOOL_OPTIONS)[number]));
+  const materials = formData
+    .getAll("materials")
+    .map((value) => String(value))
+    .filter((value): value is (typeof MATERIAL_OPTIONS)[number] => MATERIAL_OPTIONS.includes(value as (typeof MATERIAL_OPTIONS)[number]));
 
   if (!dailyId) return;
 
   const { error } = await supabase
     .from("daily_playlists")
-    .update({ title, notes })
+    .update({
+      title,
+      instructions: instructions || null,
+      student_objective: studentObjective || null,
+      teks: teks || null,
+      m_tools: mTools,
+      materials,
+    })
     .eq("id", dailyId);
 
   if (error) {
@@ -76,6 +108,7 @@ export async function updateDailyMetaAction(formData: FormData) {
 
   revalidatePath(`/teacher/daily/${dailyId}`);
   revalidatePath(`/student/today`);
+  redirect(`/teacher/daily/${dailyId}?saved=header`);
 }
 
 export async function togglePublishAction(formData: FormData) {
@@ -154,7 +187,7 @@ export async function moveDailyItemAction(formData: FormData) {
 }
 
 export async function createStudentAndAssignAction(formData: FormData) {
-  const { supabase } = await getUserAndProfile("teacher");
+  const { supabase, profile } = await getUserAndProfile("teacher");
   const classId = String(formData.get("classId") ?? "");
   const fullName = String(formData.get("fullName") ?? "").trim();
   const studentId = String(formData.get("studentId") ?? "").toUpperCase().trim();
@@ -164,22 +197,59 @@ export async function createStudentAndAssignAction(formData: FormData) {
     throw new Error("Invalid student input.");
   }
 
-  const email = `${studentId}@students.example.com`;
+  const email = `s-${studentId}@mathplaylist.app`;
   const service = createServiceClient();
+  let userId: string | null = null;
+
+  const { data: ownedClass } = await supabase
+    .from("classes")
+    .select("id")
+    .eq("id", classId)
+    .eq("teacher_id", profile.id)
+    .maybeSingle<{ id: string }>();
+
+  if (!ownedClass) {
+    throw new Error("You can only assign students to your own class.");
+  }
 
   const { data: userData, error: createError } = await service.auth.admin.createUser({
     email,
     password: pin,
     email_confirm: true,
-    user_metadata: { full_name: fullName, student_id: studentId },
+    user_metadata: { full_name: fullName, student_id: studentId, role: "student" },
   });
 
-  if (createError || !userData.user) {
-    throw new Error(createError?.message ?? "Could not create student account.");
+  if (createError) {
+    const alreadyExists = createError.message.toLowerCase().includes("already");
+    if (!alreadyExists) {
+      throw new Error(createError.message);
+    }
+
+    const { data: existingProfile } = await service
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle<{ id: string }>();
+
+    if (!existingProfile?.id) {
+      throw new Error("Student exists in auth but profile is missing. Create profile first.");
+    }
+
+    userId = existingProfile.id;
+    await service.auth.admin.updateUserById(userId, {
+      password: pin,
+      user_metadata: { full_name: fullName, student_id: studentId, role: "student" },
+    });
+  } else if (userData?.user) {
+    userId = userData.user.id;
+  }
+
+  if (!userId) {
+    throw new Error("Could not resolve student account.");
   }
 
   const { error: profileError } = await service.from("profiles").upsert({
-    id: userData.user.id,
+    id: userId,
     email,
     full_name: fullName,
     role: "student",
@@ -190,17 +260,17 @@ export async function createStudentAndAssignAction(formData: FormData) {
     throw new Error(profileError.message);
   }
 
-  const { error: rosterError } = await supabase.from("class_students").upsert({
+  const { error: rosterError } = await service.from("class_students").upsert({
     class_id: classId,
-    student_id: userData.user.id,
+    student_id: userId,
   });
 
   if (rosterError) {
     throw new Error(rosterError.message);
   }
 
-  await service.from("wallets").upsert({ student_id: userData.user.id, coins: 0 });
-  await service.from("progress_xp").upsert({ student_id: userData.user.id, xp: 0 });
+  await service.from("wallets").upsert({ student_id: userId, coins: 0 });
+  await service.from("progress_xp").upsert({ student_id: userId, xp: 0 });
 
   revalidatePath(`/teacher/classes/${classId}`);
 }
@@ -242,6 +312,50 @@ export async function assignExistingStudentAction(formData: FormData) {
   const { error } = await supabase.from("class_students").upsert({
     class_id: classId,
     student_id: studentId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/teacher/classes/${classId}`);
+}
+
+export async function resetStudentPinAction(formData: FormData) {
+  const { supabase, profile } = await getUserAndProfile("teacher");
+  const classId = String(formData.get("classId") ?? "").trim();
+  const studentProfileId = String(formData.get("studentProfileId") ?? "").trim();
+  const pin = String(formData.get("pin") ?? "").trim();
+
+  if (!classId || !studentProfileId || !PIN_REGEX.test(pin)) {
+    throw new Error("PIN must be exactly 6 digits.");
+  }
+
+  const { data: classRow } = await supabase
+    .from("classes")
+    .select("id")
+    .eq("id", classId)
+    .eq("teacher_id", profile.id)
+    .maybeSingle<{ id: string }>();
+
+  if (!classRow) {
+    throw new Error("You can only manage students in your own class.");
+  }
+
+  const { data: rosterRow } = await supabase
+    .from("class_students")
+    .select("student_id")
+    .eq("class_id", classId)
+    .eq("student_id", studentProfileId)
+    .maybeSingle<{ student_id: string }>();
+
+  if (!rosterRow) {
+    throw new Error("Student is not assigned to this class.");
+  }
+
+  const service = createServiceClient();
+  const { error } = await service.auth.admin.updateUserById(studentProfileId, {
+    password: pin,
   });
 
   if (error) {

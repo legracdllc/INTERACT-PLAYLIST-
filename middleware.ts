@@ -20,21 +20,25 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single<{ role: "student" | "teacher" }>();
+  let role = (user.user_metadata?.role ?? user.app_metadata?.role ?? null) as "student" | "teacher" | null;
+  if (!role) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single<{ role: "student" | "teacher" }>();
+    role = profile?.role ?? null;
+  }
 
-  if (!profile) {
+  if (!role) {
     return NextResponse.redirect(new URL("/login?error=missing_profile", request.url));
   }
 
-  if (path.startsWith(STUDENT_PREFIX) && profile.role !== "student") {
+  if (path.startsWith(STUDENT_PREFIX) && role !== "student") {
     return NextResponse.redirect(new URL("/teacher/dashboard", request.url));
   }
 
-  if (path.startsWith(TEACHER_PREFIX) && profile.role !== "teacher") {
+  if (path.startsWith(TEACHER_PREFIX) && role !== "teacher") {
     return NextResponse.redirect(new URL("/student/today", request.url));
   }
 
