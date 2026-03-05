@@ -1,0 +1,28 @@
+BITACORA DEL PROYECTO
+
+2026-03-03 (Tuesday)
+- Se hizo el commit inicial del proyecto: "Initial commit: Math Playlist Campus MVP".
+- Se creo la base del sistema con Next.js + TypeScript + Tailwind + Supabase.
+- Quedaron creadas rutas principales publicas, student y teacher.
+- Se agregaron endpoints API clave (progreso, creacion de daily, calificacion y export CSV).
+- Se incluyeron archivos base de configuracion y estructura general del repo.
+
+2026-03-04 (Wednesday)
+- Confirmed image folder path: public/mascots.
+- Shared the full local path on your computer.
+- Checked current mascot file names and found they were Screenshot *.jpg files.
+- Renamed and converted 10 mascot images to the expected .png names:
+  fraction-paws.png, multiply-mane.png, divide-roar.png, geo-cub.png,
+  measure-king.png, perimeter-pouncer.png, area-cub.png, graph-guardian.png,
+  place-value-prince.png, timely-tamer.png.
+- Explained how to access the app from outside using GitHub + Vercel + Supabase.
+- Explained Vercel environment variables step by step.
+- Read .env.local and prepared the 4 environment variable values for copy/paste.
+- Clarified NEXT_PUBLIC_SITE_URL in Vercel must be the real Vercel URL (not localhost).
+
+2026-03-05 (Thursday)
+- Se pidio y compartio un resumen de lo realizado el dia anterior.
+- Se creo un archivo de bitacora diaria y luego se renombro a Bitacora.txt.
+- Se agrego la entrada historica del 2026-03-03 usando el historial de Git.
+- Se ajusto el formato del archivo para mantener una bitacora por dia.
+

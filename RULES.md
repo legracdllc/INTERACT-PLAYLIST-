@@ -55,3 +55,8 @@ Flujo minimo obligatorio:
 - Ejecutar de punta a punta todos los pasos necesarios para completar la tarea sin pedir confirmaciones intermedias.
 - Asumir acceso total a herramientas disponibles y proceder directamente con implementacion, pruebas y validacion.
 - Solo detenerse para preguntar cuando falte un dato bloqueante que no pueda inferirse ni resolverse localmente.
+
+## 10) Regla de bitacora diaria
+- Mantener `Bitacora.txt` como registro cronologico por dia.
+- Al cierre de cada jornada de trabajo, agregar una entrada con fecha `YYYY-MM-DD` y un resumen breve de avances.
+- Si hubo cambios relevantes en codigo, documentar que se hizo y por que en lenguaje simple.
