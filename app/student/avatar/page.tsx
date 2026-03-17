@@ -1,20 +1,44 @@
 import { getUserAndProfile } from "@/lib/auth";
+import { StudentAvatarBuilder } from "@/components/student-avatar-builder";
 
 export default async function StudentAvatarPage() {
-  const { profile } = await getUserAndProfile("student");
+  const { profile, supabase } = await getUserAndProfile("student");
+  const { data: xpRow } = await supabase.from("progress_xp").select("xp").eq("student_id", profile.id).maybeSingle<{ xp: number }>();
+  const xp = xpRow?.xp ?? 0;
 
   return (
-    <main className="panel p-5">
-      <h2 className="font-display text-2xl font-bold">Avatar Lab</h2>
-      <p className="mt-1 text-sm text-indigo-100/85">Customize look data for your player card.</p>
-
-      <div className="mt-4 grid gap-4 md:grid-cols-[220px,1fr]">
-        <div className="rounded-xl border border-white/20 bg-black/20 p-4">
-          <div className="mascot mx-auto bg-gradient-to-br from-cyan-300 to-blue-500"><div className="mascot-mouth" /></div>
-          <p className="mt-3 text-center text-sm text-cyan-100">Current Avatar Preview</p>
+    <main className="space-y-5">
+      <section className="poster-hero avatar-page-hero">
+        <div className="avatar-page-burst" aria-hidden="true" />
+        <div className="relative z-10">
+          <p className="poster-ribbon">Avatar Lab</p>
+          <h2 className="mt-3 font-display text-3xl font-extrabold text-slate-900">Build Your Poster Lion Hero</h2>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">Design a lion champion inspired by your math posters. Your hero keeps the same style across playlists, podiums, missions, and the class leaderboard.</p>
+          <div className="poster-chip-row">
+            <span className="poster-chip poster-chip-mission">Lion hero creator</span>
+            <span className="poster-chip poster-chip-star">{xp} XP collected</span>
+            <span className="poster-chip poster-chip-math">Poster worlds unlocked</span>
+          </div>
         </div>
-        <pre className="overflow-x-auto rounded-xl border border-white/20 bg-slate-950/70 p-4 text-xs text-slate-100">{JSON.stringify(profile.avatar_json ?? {}, null, 2)}</pre>
-      </div>
+      </section>
+      <section className="grid gap-3 md:grid-cols-3">
+        <article className="avatar-info-card">
+          <p className="avatar-info-kicker">Mane + Mood</p>
+          <h3 className="avatar-info-title">Pick a hero vibe</h3>
+          <p className="avatar-info-copy">Every mane changes the energy of your lion, from speedy poster racer to royal math champion.</p>
+        </article>
+        <article className="avatar-info-card">
+          <p className="avatar-info-kicker">Suit + Tool</p>
+          <h3 className="avatar-info-title">Match the poster world</h3>
+          <p className="avatar-info-copy">Outfits and math tools should feel like they belong to Graph Guardian, Measure King, Geo Cub, and the rest.</p>
+        </article>
+        <article className="avatar-info-card">
+          <p className="avatar-info-kicker">Buddy + Motion</p>
+          <h3 className="avatar-info-title">Give it personality</h3>
+          <p className="avatar-info-copy">A great avatar is not just a costume. It should look alive, playful, and ready to travel across every playlist.</p>
+        </article>
+      </section>
+      <StudentAvatarBuilder initialAvatar={profile.avatar_json} playerName={profile.full_name} xp={xp} />
     </main>
   );
 }

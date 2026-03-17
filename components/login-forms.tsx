@@ -1,270 +1,271 @@
 "use client";
 
-import { FormEvent, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const STUDENT_ID_REGEX = /^[A-Z][0-9]{7}$/;
-const PIN_REGEX = /^[0-9]{6}$/;
-const TEACHER_USERNAME_REGEX = /^[A-Z][0-9]{7}$/;
-const TEACHER_PASSWORD_REGEX = /^[0-9]{6}$/;
+const ID_PATTERN = /^[A-Z][0-9]{7}$/;
+const PIN_PATTERN = /^[0-9]{6}$/;
+const ADMIN_USERNAME = "admin";
+const ADMIN_PASSWORD = "admin1";
 
-function teacherEmails(username: string) {
-  const id = username.toUpperCase();
-  return [
-    `t-${id}@mathplaylist.app`,
-    `${id}@teachers.mathplaylist.app`,
-    `${id}@teachers.example.com`,
-  ];
+function teacherEmail(username: string) {
+  return `t-${username}@mathplaylist.app`;
 }
 
-function studentEmails(studentId: string) {
-  const id = studentId.toUpperCase();
-  return [
-    `s-${id}@mathplaylist.app`,
-    `${id}@students.mathplaylist.app`,
-    `${id}@students.example.com`,
-  ];
+function studentEmail(studentId: string) {
+  return `s-${studentId}@mathplaylist.app`;
 }
 
-async function bootstrapTeacher(username: string, password: string, fullName?: string) {
-  const res = await fetch("/api/auth/teacher/bootstrap", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password, fullName }),
-  });
+function normalizeTeacherUsername(value: string) {
+  const trimmed = value.trim();
+  return trimmed.toLowerCase() === ADMIN_USERNAME ? ADMIN_USERNAME : trimmed.toUpperCase();
+}
 
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(typeof payload.error === "string" ? payload.error : "Could not create teacher account.");
+type LoginMode = "teacher" | "student";
+
+function getFriendlyErrorMessage(raw: string | null) {
+  if (!raw) return "";
+
+  switch (raw) {
+    case "missing_profile":
+      return "Your account signed in, but the profile record was missing. Please try again.";
+    case "oauth_failed":
+      return "The sign-in flow could not finish. Please try again.";
+    case "missing_code":
+      return "The sign-in callback was incomplete. Please try again.";
+    default:
+      return raw.replaceAll("_", " ");
   }
 }
 
 export function LoginForms() {
-  const supabase = useMemo(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-    return createClient();
-  }, []);
-
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState<LoginMode>("teacher");
+  const [teacherUsername, setTeacherUsername] = useState("");
+  const [teacherPassword, setTeacherPassword] = useState("");
+  const [teacherName, setTeacherName] = useState("");
+  const [studentId, setStudentId] = useState("");
+  const [studentPin, setStudentPin] = useState("");
+  const [error, setError] = useState(getFriendlyErrorMessage(searchParams.get("error")));
+  const [isPending, startTransition] = useTransition();
 
-  async function ensureTeacherProfile() {
-    if (!supabase) return;
+  const next = searchParams.get("next");
+  const safeNext = next && next.startsWith("/") ? next : null;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    await supabase.from("profiles").upsert({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata.full_name ?? user.email?.split("@")[0] ?? "Teacher",
-      role: "teacher",
-    });
-  }
-
-  function handleTeacherSignIn(event: FormEvent<HTMLFormElement>) {
+  function handleTeacherSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
-    setMessage(null);
-    const data = new FormData(event.currentTarget);
-    const username = String(data.get("teacherUsername") ?? "").toUpperCase().trim();
-    const password = String(data.get("teacherPassword") ?? "").trim();
+    setError("");
 
-    if (!TEACHER_USERNAME_REGEX.test(username)) {
-      setError("Teacher username must be 1 letter + 7 digits.");
+    const username = normalizeTeacherUsername(teacherUsername);
+    const password = teacherPassword.trim();
+    const fullName = teacherName.trim();
+    const isAdmin = username === ADMIN_USERNAME && password === ADMIN_PASSWORD;
+
+    if (!isAdmin && !ID_PATTERN.test(username)) {
+      setError("Teacher username must look like A1234567, or use admin.");
       return;
     }
-    if (!TEACHER_PASSWORD_REGEX.test(password)) {
-      setError("Teacher password must be exactly 6 digits.");
+
+    if (!isAdmin && !PIN_PATTERN.test(password)) {
+      setError("Teacher password must be exactly 6 digits, or use admin1.");
       return;
     }
 
     startTransition(async () => {
-      if (!supabase) return;
-      let signedIn = false;
-      let lastErrorMessage = "Invalid teacher username or password.";
+      try {
+        const bootstrapRes = await fetch("/api/auth/teacher/bootstrap", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            username,
+            password,
+            fullName: fullName || username,
+          }),
+        });
 
-      for (const email of teacherEmails(username)) {
-        const { error: authError } = await supabase.auth.signInWithPassword({
-          email,
+        const bootstrapBody = await bootstrapRes.json().catch(() => null) as { error?: string } | null;
+        if (!bootstrapRes.ok) {
+          throw new Error(bootstrapBody?.error ?? "Could not prepare teacher account.");
+        }
+
+        const supabase = createClient();
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: teacherEmail(username),
           password,
         });
 
-        if (!authError) {
-          signedIn = true;
-          break;
+        if (signInError) {
+          throw new Error(signInError.message);
         }
 
-        const msg = authError.message.toLowerCase();
-        if (msg.includes("email not confirmed")) {
-          lastErrorMessage = "Teacher account exists but email is not confirmed. Disable email confirmation in Supabase Email provider for local use.";
-          break;
-        }
-        lastErrorMessage = "Invalid teacher username or password.";
+        router.push(safeNext ?? "/teacher/dashboard");
+        router.refresh();
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : "Teacher sign-in failed.");
       }
-
-      if (!signedIn) {
-        try {
-          await bootstrapTeacher(username, password, username);
-          const { error: retryError } = await supabase.auth.signInWithPassword({
-            email: teacherEmails(username)[0],
-            password,
-          });
-          if (retryError) {
-            setError(lastErrorMessage);
-            return;
-          }
-        } catch (bootstrapError) {
-          setError(bootstrapError instanceof Error ? bootstrapError.message : lastErrorMessage);
-          return;
-        }
-      }
-
-      await ensureTeacherProfile();
-      router.push("/teacher/dashboard");
-      router.refresh();
     });
   }
 
-  function handleTeacherCreate(event: FormEvent<HTMLFormElement>) {
+  function handleStudentSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
-    setMessage(null);
-    const data = new FormData(event.currentTarget);
-    const username = String(data.get("newTeacherUsername") ?? "").toUpperCase().trim();
-    const fullName = String(data.get("teacherFullName") ?? "").trim();
-    const password = String(data.get("newTeacherPassword") ?? "").trim();
+    setError("");
 
-    if (!TEACHER_USERNAME_REGEX.test(username)) {
-      setError("Teacher username must be 1 letter + 7 digits.");
+    const normalizedStudentId = studentId.toUpperCase().trim();
+    const pin = studentPin.trim();
+
+    if (!ID_PATTERN.test(normalizedStudentId)) {
+      setError("Student ID must look like A1234567.");
       return;
     }
-    if (!TEACHER_PASSWORD_REGEX.test(password)) {
-      setError("Teacher password must be exactly 6 digits.");
+
+    if (!PIN_PATTERN.test(pin)) {
+      setError("Student PIN must be exactly 6 digits.");
       return;
     }
 
     startTransition(async () => {
-      if (!supabase) return;
       try {
-        await bootstrapTeacher(username, password, fullName || username);
-      } catch (bootstrapError) {
-        setError(bootstrapError instanceof Error ? bootstrapError.message : "Could not create teacher account.");
-        return;
-      }
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: teacherEmails(username)[0],
-        password,
-      });
-
-      if (signInError) {
-        setMessage("Teacher account created. Try Teacher Sign In now.");
-        return;
-      }
-
-      await ensureTeacherProfile();
-      router.push("/teacher/dashboard");
-      router.refresh();
-    });
-  }
-
-  function handleStudentSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setMessage(null);
-    const data = new FormData(event.currentTarget);
-
-    const rawId = String(data.get("studentId") ?? "").toUpperCase().trim();
-    const pin = String(data.get("pin") ?? "").trim();
-    if (!STUDENT_ID_REGEX.test(rawId)) {
-      setError("Student ID must be 1 letter + 7 digits.");
-      return;
-    }
-    if (!PIN_REGEX.test(pin)) {
-      setError("PIN must be exactly 6 digits.");
-      return;
-    }
-
-    startTransition(async () => {
-      if (!supabase) return;
-      let signedIn = false;
-      for (const email of studentEmails(rawId)) {
-        const { error: authError } = await supabase.auth.signInWithPassword({
-          email,
+        const supabase = createClient();
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: studentEmail(normalizedStudentId),
           password: pin,
         });
-        if (!authError) {
-          signedIn = true;
-          break;
+
+        if (signInError) {
+          throw new Error("Student sign-in failed. Check the Student ID and PIN.");
         }
-      }
 
-      if (!signedIn) {
-        setError("Invalid Student ID or PIN.");
-        return;
+        router.push(safeNext ?? "/student/today");
+        router.refresh();
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : "Student sign-in failed.");
       }
-
-      router.push("/student/today");
-      router.refresh();
     });
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <section className="rounded-2xl border border-white/20 bg-black/25 p-6 backdrop-blur">
-        <h2 className="font-display text-2xl font-bold text-white">Teacher Login</h2>
-        <p className="mt-2 text-sm text-indigo-100/90">Use school ID format (1 letter + 7 digits) + password.</p>
+    <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <aside className="panel flex flex-col gap-2 p-3">
+        <button
+          type="button"
+          onClick={() => {
+            setMode("teacher");
+            setError("");
+          }}
+          className={mode === "teacher" ? "btn btn-primary justify-start" : "btn justify-start border border-white/20 bg-white/10"}
+        >
+          Teacher Login
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode("student");
+            setError("");
+          }}
+          className={mode === "student" ? "btn btn-primary justify-start" : "btn justify-start border border-white/20 bg-white/10"}
+        >
+          Student Login
+        </button>
+      </aside>
 
-        <form className="mt-4 space-y-3" noValidate onSubmit={handleTeacherSignIn}>
-          <label className="block">
-            <span className="text-sm font-bold text-cyan-100">Username</span>
-            <input name="teacherUsername" required pattern="[A-Za-z][0-9]{7}" className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 uppercase text-white" placeholder="A1234567" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold text-cyan-100">Password</span>
-            <input name="teacherPassword" type="password" required pattern="[0-9]{6}" inputMode="numeric" maxLength={6} className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white" placeholder="123456" />
-          </label>
-          <button type="submit" className="btn btn-primary w-full" disabled={pending}>Teacher Sign In</button>
-        </form>
+      <section className="panel p-5">
+        {mode === "teacher" ? (
+          <form className="space-y-4" onSubmit={handleTeacherSubmit}>
+            <div>
+                <h2 className="font-display text-2xl font-bold">Teacher Sign In</h2>
+              <p className="mt-1 text-sm text-indigo-100/80">
+                Use your school ID and 6-digit password. Reserved admin login: admin / admin1.
+              </p>
+            </div>
 
-        <div className="mt-5 border-t border-white/15 pt-4">
-          <p className="text-sm font-bold text-cyan-100">Create Teacher Account</p>
-          <form className="mt-3 space-y-3" noValidate onSubmit={handleTeacherCreate}>
-            <input name="teacherFullName" className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white" placeholder="Full name (optional)" />
-            <input name="newTeacherUsername" required pattern="[A-Za-z][0-9]{7}" className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 uppercase text-white" placeholder="A1234567" />
-            <input name="newTeacherPassword" type="password" required pattern="[0-9]{6}" inputMode="numeric" maxLength={6} className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white" placeholder="123456" />
-            <button type="submit" className="btn border border-white/20 bg-white/10 text-white w-full" disabled={pending}>Create Teacher Account</button>
+            <label className="block">
+              <span className="text-sm font-bold">Full Name</span>
+              <input
+                value={teacherName}
+                onChange={(event) => setTeacherName(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white outline-none placeholder:text-slate-300"
+                placeholder="Ms. Rivera"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-bold">Username</span>
+              <input
+                value={teacherUsername}
+                onChange={(event) => setTeacherUsername(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 uppercase text-white outline-none placeholder:text-slate-300"
+                placeholder="A1234567 or admin"
+                maxLength={8}
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-bold">Password</span>
+              <input
+                value={teacherPassword}
+                onChange={(event) => setTeacherPassword(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white outline-none placeholder:text-slate-300"
+                placeholder="123456 or admin1"
+                inputMode="text"
+                maxLength={6}
+                required
+              />
+            </label>
+
+            <button disabled={isPending} className="btn btn-primary">
+              {isPending ? "Signing In..." : "Enter Teacher Console"}
+            </button>
           </form>
-        </div>
-      </section>
+        ) : (
+          <form className="space-y-4" onSubmit={handleStudentSubmit}>
+            <div>
+              <h2 className="font-display text-2xl font-bold">Student Sign In</h2>
+              <p className="mt-1 text-sm text-indigo-100/80">
+                Students sign in with their assigned Student ID and 6-digit PIN.
+              </p>
+            </div>
 
-      <section className="rounded-2xl border border-white/20 bg-black/25 p-6 backdrop-blur">
-        <h2 className="font-display text-2xl font-bold text-white">Student Login</h2>
-        <p className="mt-2 text-sm text-indigo-100/90">Use campus Student ID + 6 digit PIN.</p>
-        <form className="mt-5 space-y-3" noValidate onSubmit={handleStudentSubmit}>
-          <label className="block">
-            <span className="text-sm font-bold text-cyan-100">Student ID</span>
-            <input name="studentId" required pattern="[A-Za-z][0-9]{7}" className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 uppercase text-white" placeholder="A1234567" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold text-cyan-100">PIN</span>
-            <input name="pin" required pattern="[0-9]{6}" inputMode="numeric" maxLength={6} className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white" placeholder="123456" />
-          </label>
-          <button type="submit" className="btn btn-primary w-full" disabled={pending}>Student Sign In</button>
-        </form>
-      </section>
+            <label className="block">
+              <span className="text-sm font-bold">Student ID</span>
+              <input
+                value={studentId}
+                onChange={(event) => setStudentId(event.target.value.toUpperCase())}
+                className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 uppercase text-white outline-none placeholder:text-slate-300"
+                placeholder="A1234567"
+                maxLength={8}
+                required
+              />
+            </label>
 
-      {error ? <p className="md:col-span-2 rounded-lg border border-rose-300/30 bg-rose-500/15 p-3 text-sm text-rose-100">{error}</p> : null}
-      {message ? <p className="md:col-span-2 rounded-lg border border-emerald-300/30 bg-emerald-500/15 p-3 text-sm text-emerald-100">{message}</p> : null}
+            <label className="block">
+              <span className="text-sm font-bold">PIN</span>
+              <input
+                value={studentPin}
+                onChange={(event) => setStudentPin(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white outline-none placeholder:text-slate-300"
+                placeholder="123456"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+              />
+            </label>
+
+            <button disabled={isPending} className="btn btn-primary">
+              {isPending ? "Signing In..." : "Enter Student Arena"}
+            </button>
+          </form>
+        )}
+
+        {error ? (
+          <p className="mt-4 rounded-xl border border-rose-300/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+            {error}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }

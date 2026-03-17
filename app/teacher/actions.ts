@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getUserAndProfile } from "@/lib/auth";
+import { syncPlaylistWinners } from "@/lib/playlist-podium";
 import { createServiceClient } from "@/lib/supabase/service";
 
 const STUDENT_ID_REGEX = /^[A-Z][0-9]{7}$/;
@@ -23,6 +24,12 @@ const MATERIAL_OPTIONS = [
   "Pencil",
   "Laptop",
 ] as const;
+
+export type StudentCreateFormState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  studentId?: string;
+};
 
 export async function createClassAction(formData: FormData) {
   const { supabase, profile } = await getUserAndProfile("teacher");
@@ -186,15 +193,27 @@ export async function moveDailyItemAction(formData: FormData) {
   revalidatePath(`/teacher/daily/${dailyId}`);
 }
 
-export async function createStudentAndAssignAction(formData: FormData) {
+async function createStudentAndAssign(formData: FormData): Promise<StudentCreateFormState> {
   const { supabase, profile } = await getUserAndProfile("teacher");
   const classId = String(formData.get("classId") ?? "");
   const fullName = String(formData.get("fullName") ?? "").trim();
   const studentId = String(formData.get("studentId") ?? "").toUpperCase().trim();
   const pin = String(formData.get("pin") ?? "").trim();
 
-  if (!classId || !fullName || !STUDENT_ID_REGEX.test(studentId) || !PIN_REGEX.test(pin)) {
-    throw new Error("Invalid student input.");
+  if (!classId) {
+    return { status: "error", message: "Missing class ID." };
+  }
+
+  if (!fullName) {
+    return { status: "error", message: "Student full name is required." };
+  }
+
+  if (!STUDENT_ID_REGEX.test(studentId)) {
+    return { status: "error", message: "Student ID must look like A1234567." };
+  }
+
+  if (!PIN_REGEX.test(pin)) {
+    return { status: "error", message: "PIN must be exactly 6 digits." };
   }
 
   const email = `s-${studentId}@mathplaylist.app`;
@@ -209,7 +228,7 @@ export async function createStudentAndAssignAction(formData: FormData) {
     .maybeSingle<{ id: string }>();
 
   if (!ownedClass) {
-    throw new Error("You can only assign students to your own class.");
+    return { status: "error", message: "You can only assign students to your own class." };
   }
 
   const { data: userData, error: createError } = await service.auth.admin.createUser({
@@ -222,7 +241,7 @@ export async function createStudentAndAssignAction(formData: FormData) {
   if (createError) {
     const alreadyExists = createError.message.toLowerCase().includes("already");
     if (!alreadyExists) {
-      throw new Error(createError.message);
+      return { status: "error", message: createError.message };
     }
 
     const { data: existingProfile } = await service
@@ -232,7 +251,7 @@ export async function createStudentAndAssignAction(formData: FormData) {
       .maybeSingle<{ id: string }>();
 
     if (!existingProfile?.id) {
-      throw new Error("Student exists in auth but profile is missing. Create profile first.");
+      return { status: "error", message: "Student exists in auth but profile is missing. Create profile first." };
     }
 
     userId = existingProfile.id;
@@ -245,7 +264,7 @@ export async function createStudentAndAssignAction(formData: FormData) {
   }
 
   if (!userId) {
-    throw new Error("Could not resolve student account.");
+    return { status: "error", message: "Could not resolve student account." };
   }
 
   const { error: profileError } = await service.from("profiles").upsert({
@@ -257,7 +276,7 @@ export async function createStudentAndAssignAction(formData: FormData) {
   });
 
   if (profileError) {
-    throw new Error(profileError.message);
+    return { status: "error", message: profileError.message };
   }
 
   const { error: rosterError } = await service.from("class_students").upsert({
@@ -266,13 +285,40 @@ export async function createStudentAndAssignAction(formData: FormData) {
   });
 
   if (rosterError) {
-    throw new Error(rosterError.message);
+    return { status: "error", message: rosterError.message };
   }
 
   await service.from("wallets").upsert({ student_id: userId, coins: 0 });
   await service.from("progress_xp").upsert({ student_id: userId, xp: 0 });
 
   revalidatePath(`/teacher/classes/${classId}`);
+  return {
+    status: "success",
+    message: `Student created and assigned successfully: ${studentId}`,
+    studentId,
+  };
+}
+
+export async function createStudentAndAssignAction(formData: FormData) {
+  const result = await createStudentAndAssign(formData);
+
+  if (result.status === "error") {
+    throw new Error(result.message ?? "Could not create student.");
+  }
+
+  const classId = String(formData.get("classId") ?? "");
+  if (!classId) {
+    throw new Error("Missing class ID.");
+  }
+
+  redirect(`/teacher/classes/${classId}?created=student&studentId=${encodeURIComponent(result.studentId ?? "")}`);
+}
+
+export async function createStudentAndAssignFormAction(
+  _prevState: StudentCreateFormState,
+  formData: FormData,
+): Promise<StudentCreateFormState> {
+  return createStudentAndAssign(formData);
 }
 
 export async function gradeProgressAction(formData: FormData) {
@@ -298,6 +344,16 @@ export async function gradeProgressAction(formData: FormData) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const { data: daily } = await supabase
+    .from("daily_playlists")
+    .select("class_id")
+    .eq("id", dailyId)
+    .maybeSingle<{ class_id: string }>();
+
+  if (daily?.class_id) {
+    await syncPlaylistWinners(dailyId, daily.class_id);
   }
 
   revalidatePath(`/teacher/daily/${dailyId}/tracker`);

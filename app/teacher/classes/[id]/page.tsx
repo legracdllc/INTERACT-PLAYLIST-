@@ -1,15 +1,25 @@
 import Link from "next/link";
 import { createDailyForClassAction, createStudentAndAssignAction, resetStudentPinAction } from "@/app/teacher/actions";
 import { getUserAndProfile } from "@/lib/auth";
+import { createServiceClient } from "@/lib/supabase/service";
+import { PosterCelebration } from "@/components/poster-celebration";
 
 type RosterRow = {
   student_id: string;
-  profiles: { id: string; full_name: string | null; settings_json: { student_id?: string } | null }[];
+  profile: { id: string; full_name: string | null; settings_json: { student_id?: string } | null } | null;
 };
 
-export default async function TeacherClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TeacherClassDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ created?: string; studentId?: string }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
   const { supabase, profile } = await getUserAndProfile("teacher");
+  const service = createServiceClient();
   const [klassResult, rosterResult, dailiesResult] = await Promise.all([
     supabase
       .from("classes")
@@ -17,9 +27,9 @@ export default async function TeacherClassDetailPage({ params }: { params: Promi
       .eq("id", id)
       .eq("teacher_id", profile.id)
       .single<{ id: string; name: string; teacher_id: string }>(),
-    supabase
+    service
       .from("class_students")
-      .select("student_id,profiles!inner(id,full_name,settings_json)")
+      .select("student_id")
       .eq("class_id", id),
     supabase
       .from("daily_playlists")
@@ -34,18 +44,41 @@ export default async function TeacherClassDetailPage({ params }: { params: Promi
     return <p className="panel p-5">Class not found.</p>;
   }
 
-  const rosterRows = (rosterResult.data ?? []) as RosterRow[];
+  const studentIds = (rosterResult.data ?? []).map((row) => row.student_id as string);
+  const { data: profileRows } = studentIds.length
+    ? await service
+      .from("profiles")
+      .select("id,full_name,settings_json")
+      .in("id", studentIds)
+    : { data: [] };
+  const profileById = new Map((profileRows ?? []).map((row) => [row.id as string, row]));
+  const rosterRows = studentIds.map((studentId) => ({
+    student_id: studentId,
+    profile: (profileById.get(studentId) as RosterRow["profile"]) ?? null,
+  }));
   const dailies = dailiesResult.data ?? [];
 
   return (
     <main className="space-y-6">
-      <section className="panel p-5">
+      <section className="panel panel-playful p-5">
+        <PosterCelebration active={query.created === "student"} title="Math Poster Win!" />
+        <div className="math-corner-doodles" aria-hidden="true" />
         <h2 className="font-display text-2xl font-bold">{klass.name}</h2>
         <p className="mt-1 text-sm text-slate-600">Create student accounts and assign daily playlists.</p>
+        <div className="poster-chip-row">
+          <span className="poster-chip poster-chip-mission">Roster Mission</span>
+          <span className="poster-chip poster-chip-math">{rosterRows.length} students</span>
+        </div>
+        {query.created === "student" ? (
+          <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            Student created and assigned successfully{query.studentId ? `: ${query.studentId}` : "."}
+          </p>
+        ) : null}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="panel p-5">
+        <article className="panel panel-playful p-5">
+          <div className="math-corner-doodles" aria-hidden="true" />
           <h3 className="font-display text-xl font-bold">Create Student Account + Assign</h3>
           <form action={createStudentAndAssignAction} className="mt-4 space-y-3" noValidate>
             <input type="hidden" name="classId" value={id} />
@@ -65,7 +98,8 @@ export default async function TeacherClassDetailPage({ params }: { params: Promi
           </form>
         </article>
 
-        <article className="panel p-5">
+        <article className="panel panel-playful p-5">
+          <div className="math-corner-doodles" aria-hidden="true" />
           <h3 className="font-display text-xl font-bold">Create Daily Playlist By Date</h3>
           <form action={createDailyForClassAction} className="mt-4 space-y-3">
             <input type="hidden" name="classId" value={id} />
@@ -96,7 +130,10 @@ export default async function TeacherClassDetailPage({ params }: { params: Promi
         </article>
       </section>
 
-      <section className="panel p-5">
+      <section className="panel kid-sticker-panel panel-playful table-garden p-5">
+        <span className="kid-sticker kid-sticker-a" aria-hidden="true">⭐</span>
+        <span className="kid-sticker kid-sticker-b" aria-hidden="true">📘</span>
+        <div className="math-corner-doodles" aria-hidden="true" />
         <h3 className="font-display text-xl font-bold">Roster</h3>
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -109,7 +146,7 @@ export default async function TeacherClassDetailPage({ params }: { params: Promi
             </thead>
             <tbody>
               {rosterRows.map((row) => {
-                const profileRow = row.profiles?.[0];
+                const profileRow = row.profile;
                 return (
                   <tr key={row.student_id} className="border-t border-slate-100">
                     <td className="py-2 font-semibold">{profileRow?.full_name ?? "Student"}</td>
@@ -136,9 +173,11 @@ export default async function TeacherClassDetailPage({ params }: { params: Promi
             </tbody>
           </table>
           {rosterRows.length ? null : (
-            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              No students in this roster yet. Create a student above to get started.
-            </p>
+            <div className="poster-empty-state mt-3">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Poster Roster</p>
+              <p className="mt-2 font-display text-xl font-black text-slate-900">No students in this roster yet.</p>
+              <p className="mt-1 text-sm text-slate-600">Create a student above and this board will fill with math explorers ready for missions.</p>
+            </div>
           )}
         </div>
       </section>

@@ -71,11 +71,16 @@ export default async function TeacherTrackerPage({ params }: { params: Promise<{
 
   return (
     <main className="space-y-4">
-      <section className="panel p-5">
+      <section className="panel panel-playful p-5">
+        <div className="math-corner-doodles" aria-hidden="true" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl font-bold">Tracker Grid</h2>
             <p className="text-sm text-slate-600">{daily.classes?.name} - {daily.date}</p>
+            <div className="poster-chip-row">
+              <span className="poster-chip poster-chip-math">{items.length} math checks</span>
+              <span className="poster-chip poster-chip-star">{(roster ?? []).length} learners</span>
+            </div>
           </div>
           <div className="flex gap-2">
             <Link href={`/teacher/daily/${id}`} className="btn border border-slate-200 bg-white">Back to Builder</Link>
@@ -84,7 +89,10 @@ export default async function TeacherTrackerPage({ params }: { params: Promise<{
         </div>
       </section>
 
-      <section className="panel overflow-x-auto p-4">
+      <section className="panel kid-sticker-panel panel-playful table-garden overflow-x-auto p-4">
+        <span className="kid-sticker kid-sticker-a" aria-hidden="true">🏆</span>
+        <span className="kid-sticker kid-sticker-c" aria-hidden="true">✨</span>
+        <div className="math-corner-doodles" aria-hidden="true" />
         <table className="min-w-full border-separate border-spacing-2 text-sm">
           <thead>
             <tr>

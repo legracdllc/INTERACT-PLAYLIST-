@@ -38,6 +38,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
    - `supabase/migrations/20260303113000_init_math_playlist.sql`
    - `supabase/migrations/20260304121500_daily_header_fields.sql`
    - `supabase/migrations/20260304133000_daily_mtools_materials.sql`
+   - `supabase/migrations/20260310123000_game_system_tables.sql`
 3. Configure Authentication:
    - Use Email/Password sign-in for teachers.
    - Keep Site URL set for local/dev as needed.
@@ -68,6 +69,21 @@ npm run prod
 ```
 
 Then open `http://localhost:3000`.
+
+## System verification
+To run a reproducible Supabase smoke test that checks tables and creates a teacher, class, student, playlist, avatar, inventory, and progress:
+
+```bash
+npm run verify:system
+```
+
+This uses `.env.local` and prints the created IDs plus a verification summary.
+
+To remove the smoke/verify users, classes, playlists, inventory, and progress created by verification:
+
+```bash
+npm run cleanup:system
+```
 
 ## First-time data + teacher profile
 1. Create a teacher account on `/login` with username + password.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { addDailyItemAction, moveDailyItemAction, togglePublishAction, updateDailyMetaAction } from "@/app/teacher/actions";
 import { getUserAndProfile } from "@/lib/auth";
 import { MultiSelectDropdown } from "@/components/multi-select-dropdown";
+import { PosterCelebration } from "@/components/poster-celebration";
 
 const itemTypes = ["mini", "guided", "independent", "staar", "challenge", "exit"];
 const mToolOptions = [
@@ -71,7 +72,9 @@ export default async function TeacherDailyPage({
 
   return (
     <main className="space-y-6">
-      <section className="panel p-5">
+      <section className="panel panel-playful p-5">
+        <PosterCelebration active={saved === "header"} title="Header Powered Up!" />
+        <div className="math-corner-doodles" aria-hidden="true" />
         {saved === "header" ? (
           <p className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
             Header saved successfully.
@@ -138,7 +141,8 @@ export default async function TeacherDailyPage({
         </form>
       </section>
 
-      <section className="panel p-5">
+      <section className="panel panel-playful p-5">
+        <div className="math-corner-doodles" aria-hidden="true" />
         <h3 className="font-display text-xl font-bold">Add Item</h3>
         <form action={addDailyItemAction} className="mt-4 grid gap-3 md:grid-cols-6">
           <input type="hidden" name="dailyId" value={id} />
@@ -156,7 +160,8 @@ export default async function TeacherDailyPage({
         </form>
       </section>
 
-      <section className="panel p-5">
+      <section className="panel panel-playful p-5">
+        <div className="math-corner-doodles" aria-hidden="true" />
         <h3 className="font-display text-xl font-bold">Playlist Items</h3>
         <div className="mt-4 space-y-2">
           {((items ?? []) as DailyItem[]).map((item, index) => (
@@ -186,13 +191,16 @@ export default async function TeacherDailyPage({
           ))}
         </div>
         {items?.length ? null : (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Add your first playlist item above to unlock student progress tracking and grading.
-          </p>
+          <div className="poster-empty-state mt-3">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Math Worlds Waiting</p>
+            <p className="mt-2 font-display text-xl font-black text-slate-900">Add your first playlist item.</p>
+            <p className="mt-1 text-sm text-slate-600">Once you add an activity, students get a poster-themed mission path and the tracker comes alive.</p>
+          </div>
         )}
       </section>
 
-      <section className="panel p-5">
+      <section className="panel panel-playful p-5">
+        <div className="math-corner-doodles" aria-hidden="true" />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-display text-xl font-bold">Student Preview</h3>
           <p className="text-sm text-slate-500">How students will see this daily playlist</p>

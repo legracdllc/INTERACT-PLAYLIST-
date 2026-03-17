@@ -1,5 +1,10 @@
-import { getUserAndProfile } from "@/lib/auth";
+import { getStudentClassIdsRobust, getUserAndProfile } from "@/lib/auth";
 import { StudentDailyClient } from "@/components/student-daily-client";
+import { PlaylistPodium } from "@/components/playlist-podium";
+import { getPlaylistWinners } from "@/lib/playlist-podium";
+import { createServiceClient } from "@/lib/supabase/service";
+import { getMissionTheme } from "@/lib/mission-theme";
+import { getPersistedRewardState } from "@/lib/student-reward-state";
 
 type DailyRow = {
   id: string;
@@ -17,6 +22,8 @@ type DailyRow = {
 export default async function StudentDailyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase, profile } = await getUserAndProfile("student");
+  const service = createServiceClient();
+  const classIds = await getStudentClassIdsRobust(profile.id);
 
   const { data: daily } = await supabase
     .from("daily_playlists")
@@ -29,14 +36,7 @@ export default async function StudentDailyPage({ params }: { params: Promise<{ i
     return <p className="panel p-5">Playlist not found or not published.</p>;
   }
 
-  const { data: allowed } = await supabase
-    .from("class_students")
-    .select("class_id")
-    .eq("class_id", daily.class_id)
-    .eq("student_id", profile.id)
-    .maybeSingle();
-
-  if (!allowed) {
+  if (!classIds.includes(daily.class_id)) {
     return <p className="panel p-5">You do not have access to this playlist.</p>;
   }
 
@@ -48,9 +48,23 @@ export default async function StudentDailyPage({ params }: { params: Promise<{ i
 
   const { data: progress } = await supabase
     .from("daily_progress")
-    .select("id,daily_playlist_item_id,status,score,evidence_url")
+    .select("id,daily_playlist_item_id,status,score,evidence_url,submitted_at")
     .eq("daily_playlist_id", id)
     .eq("student_id", profile.id);
+  const { data: xpRow } = await supabase.from("progress_xp").select("xp").eq("student_id", profile.id).maybeSingle<{ xp: number }>();
+  const { data: wallet } = await supabase.from("wallets").select("coins").eq("student_id", profile.id).maybeSingle<{ coins: number }>();
+  const { data: equippedInventory } = await service
+    .from("student_inventory")
+    .select("item_key,is_equipped")
+    .eq("student_id", profile.id)
+    .eq("is_equipped", true);
+  const missionTheme = getMissionTheme(
+    (equippedInventory ?? [])
+      .filter((item) => Boolean(item.is_equipped))
+      .map((item) => item.item_key as string),
+  );
+  const rewardState = getPersistedRewardState(profile.settings_json, id);
+  const winners = await getPlaylistWinners(id, daily.class_id);
 
   return (
     <main className="space-y-4">
@@ -63,9 +77,22 @@ export default async function StudentDailyPage({ params }: { params: Promise<{ i
           {daily.instructions ? <p className="mt-1 text-indigo-100/90">{daily.instructions}</p> : null}
           {daily.m_tools?.length ? <p className="mt-1 text-sm text-lime-100">M-Tools: {daily.m_tools.join(", ")}</p> : null}
           {daily.materials?.length ? <p className="mt-1 text-sm text-pink-100">Materials: {daily.materials.join(", ")}</p> : null}
+          <p className="mt-2 text-sm font-semibold text-amber-100">{missionTheme.title}</p>
         </div>
       </section>
-      <StudentDailyClient dailyId={id} items={items ?? []} progressRows={progress ?? []} />
+      <StudentDailyClient
+        dailyId={id}
+        items={items ?? []}
+        progressRows={progress ?? []}
+        avatar={profile.avatar_json}
+        xp={xpRow?.xp ?? 0}
+        coins={wallet?.coins ?? 0}
+        today={daily.date}
+        initialEarnedBadgeIds={rewardState.earnedBadgeIds}
+        initialChestOpened={rewardState.chestOpened}
+        missionTheme={missionTheme}
+      />
+      <PlaylistPodium winners={winners} title="Playlist Top 3" />
     </main>
   );
 }

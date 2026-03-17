@@ -1,0 +1,17 @@
+
+> math-playlist@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.50.137:3000
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 1893ms
+ GET /login 200 in 2.5s (compile: 2.4s, render: 110ms)
+ GET /login 200 in 26ms (compile: 4ms, render: 22ms)
+ GET /login 200 in 31ms (compile: 4ms, render: 27ms)
+ GET / 200 in 937ms (compile: 768ms, render: 169ms)
+ GET / 200 in 64ms (compile: 6ms, render: 58ms)
+ GET / 200 in 30ms (compile: 5ms, render: 25ms)
